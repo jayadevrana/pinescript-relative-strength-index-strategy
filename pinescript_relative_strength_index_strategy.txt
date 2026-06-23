@@ -1,0 +1,156 @@
+
+
+//@version=5
+strategy(title="Relative Strength Index", shorttitle="RSI",overlay = true,process_orders_on_close = true)// format=format.price, precision=2, timeframe="", timeframe_gaps=true)
+buy_alert = input.string('Add Syntax', title = "LONG")
+sell_alert = input.string('Add Syntax', title = "SHORT")
+exitSyntax = input.string('Add Syntax', title = "LONG EXIT")
+exitSyntax2 = input.string('Add Syntax', title = "SHORT EXIT")
+trade = input.string("Both",options = ["Both","Long","Short"])
+
+timeframe = input.timeframe("15")
+
+rsiLengthInput = input.int(14, minval=1, title="RSI Length", group="RSI Settings")
+rsiSourceInput = input.source(open, "Source", group="RSI Settings")
+maTypeInput = input.string("SMA", title="MA Type", options=["SMA", "Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="MA Settings")
+maLengthInput = input.int(14, title="MA Length", group="MA Settings")
+//bbMultInput = input.float(2.0, minval=0.001, maxval=50, title="BB StdDev", group="MA Settings")
+
+rsi = request.security(syminfo.tickerid,timeframe, ta.rsi(close,rsiLengthInput))
+rsiMA = request.security(syminfo.tickerid,timeframe, ta.sma(rsi,maLengthInput))
+
+// // plot(rsi, "RSI", color=#7E57C2)
+// // plot(rsiMA, "RSI-based MA", color=color.yellow)
+// rsiUpperBand = hline(60, "RSI Upper Band", color=#787B86)
+// //hline(50, "RSI Middle Band", color=color.new(#787B86, 50))
+// rsiLowerBand = hline(40, "RSI Lower Band", color=#787B86)
+// //fill(rsiUpperBand, rsiLowerBand, color=color.rgb(126, 87, 194, 90), title="RSI Background Fill")
+// bbUpperBand = plot(isBB ? rsiMA + ta.stdev(rsi, maLengthInput) * bbMultInput : na, title = "Upper Bollinger Band", color=color.green)
+// bbLowerBand = plot(isBB ? rsiMA - ta.stdev(rsi, maLengthInput) * bbMultInput : na, title = "Lower Bollinger Band", color=color.green)
+// //fill(bbUpperBand, bbLowerBand, color= isBB ? color.new(color.green, 90) : na, title="Bollinger Bands Background Fill")
+
+buy = ta.crossover(rsi,rsiMA) 
+sell = ta.crossunder(rsi,rsiMA)
+
+if trade == "Long"
+    buy := ta.crossover(rsi,rsiMA)
+    sell := false
+
+if trade == "Short"
+    buy := false
+    sell := ta.crossunder(rsi,rsiMA)
+
+
+
+
+Stop = input(10.0,title = "StopLoss")
+ 
+ProfitPerc = input(10.0,title = "TARGET")
+ 
+ 
+long_short = 0
+long_last = (buy) and (nz(long_short[1]) == 0 or nz(long_short[1]) == -1)
+short_last = (sell) and (nz(long_short[1]) == 0 or nz(long_short[1]) == 1)
+long_short := long_last ? 1 : short_last ? -1 : long_short[1]
+ 
+long_entered = false
+long_entered := long_entered[1]
+ 
+short_entered = false
+short_entered := short_entered[1]
+ 
+ 
+longPrice = ta.valuewhen(buy and  not(long_entered), close, 0)
+
+
+shortPrice = ta.valuewhen(sell and  not(short_entered), close, 0)
+ 
+// if(use_sl)
+//     longPrice := ta.valuewhen(buy1,entry_p , 0)
+//     shortPrice := ta.valuewhen(sell1,entry_p, 0)
+ 
+use_sl = false
+
+longStop = use_sl ? longPrice : longPrice  - Stop
+shortStop = use_sl ? shortPrice : shortPrice + Stop
+ 
+if(use_sl)
+    longStop := ta.valuewhen(buy and not long_entered, low , 0)
+    shortStop := ta.valuewhen(sell and not short_entered,high, 0)
+ 
+longTake = longPrice +  ProfitPerc
+shortTake = shortPrice  - ProfitPerc
+ 
+plot(long_short==1  ? longStop : na, style=plot.style_linebr, color=color.red, linewidth=1, title="Long Fixed SL")
+plot(long_short==-1 ? shortStop : na, style=plot.style_linebr, color=color.red, linewidth=1, title="Short Fixed SL")
+plot(long_short==1  ? longTake : na, style=plot.style_linebr, color=color.navy, linewidth=1, title="Long Fixed TP")
+plot(long_short==-1 ? shortTake : na, style=plot.style_linebr, color=color.navy, linewidth=1, title="Short Fixed TP")
+ 
+ 
+longBar1 = ta.barssince(long_last)
+longBar2 = longBar1 >= 0 ? true : false
+shortBar1 = ta.barssince(short_last)
+shortBar2 = shortBar1 >= 0 ? true : false
+ 
+longSLhit = long_short==1 and longBar2 and low < longStop
+ 
+//if(long_entered and  sellSignal)
+    //longSLhit := true
+ 
+plotshape(longSLhit and not (sell and  not(short_entered)  and (long_entered)), style=shape.labelup, location=location.belowbar, color=color.gray, size=size.tiny, title="Stop Loss", text="BSLT", textcolor=color.white)
+shortSLhit = long_short==-1 and shortBar2 and high > shortStop
+ 
+ 
+//if(short_entered and buySignal)
+    //shortSLhit := true
+ 
+plotshape(shortSLhit and not (buy and  not(long_entered)  and (short_entered)), style=shape.labeldown, location=location.abovebar, color=color.gray, size=size.tiny, title="Stop Loss", text="SSLT ", textcolor=color.white)
+ 
+ 
+longTPhit = long_short==1 and longBar2 and high > longTake
+plotshape(longTPhit, style=shape.labeldown, location=location.abovebar, color=color.navy, size=size.tiny, title="Target", text="Buy-TD", textcolor=color.white)
+shortTPhit = long_short==-1 and shortBar2 and low < shortTake
+plotshape(shortTPhit, style=shape.labelup, location=location.belowbar, color=color.navy, size=size.tiny, title="Target", text="Sell-TD", textcolor=color.white)
+ 
+long_short := (long_short==1 or long_short==0) and longBar2 and (longSLhit or longTPhit) ? 0 : (long_short==-1 or long_short==0) and shortBar2 and (shortSLhit or shortTPhit) ? 0 : long_short
+ 
+ 
+plotshape(buy and not(long_entered) , color = color.green , style = shape.labelup , text = "Buy" , textcolor = color.white , location = location.belowbar)
+plotshape(sell and  not(short_entered)  , color = color.red , style = shape.labeldown , text = "Sell" , textcolor = color.white , location = location.abovebar)
+ 
+if buy
+    strategy.entry('buy', strategy.long,alert_message = buy_alert)
+    strategy.exit('Stop', 'buy', limit=longTake, stop=longStop,alert_message = exitSyntax)
+
+if sell
+    strategy.entry('sell', strategy.short,alert_message=sell_alert)
+    strategy.exit('Stop', 'sell', limit=shortTake, stop=shortStop,alert_message = exitSyntax2)
+// plotshape(buy and not(long_entered) and (short_entered), color = color.green , style = shape.labelup , text = "FA Buy" , textcolor = color.white , location = location.belowbar)
+// plotshape(sell and not(short_entered)  and (long_entered), color = color.red , style = shape.labeldown , text = "FA Sell" , textcolor = color.white , location = location.abovebar)
+ 
+ 
+// alertcondition(condition=buy and  not(long_entered)  and (short_entered), title="Fully Algo Buy")
+// alertcondition(condition=sell and  not(short_entered)  and (long_entered), title="Fully Algo sell")
+ 
+alertcondition(condition=buy  and not(long_entered), title="Buy")
+alertcondition(condition=sell  and not(short_entered), title="Sell")
+ 
+if(long_last)
+    long_entered := true
+    short_entered := false
+if(short_last)
+    short_entered := true
+    long_entered := false
+ 
+alertcondition(condition= (longSLhit or shortSLhit) and not (sell and  not(short_entered)  and (long_entered)), title="Long/Short SL")
+//alertcondition(condition= shortSLhit and not (buy and  not(long_entered)  and (short_entered)), title="Short SL")
+ 
+alertcondition(condition=longTPhit or shortTPhit, title="Long/short TP")
+//alertcondition(condition=shortTPhit, title="Short TP")
+ 
+if(longSLhit or longTPhit )
+    long_entered := false
+ 
+if(shortSLhit or shortTPhit)
+    short_entered := false
+    
